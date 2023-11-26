@@ -1,0 +1,21 @@
+{
+    "name": "machinateur/phpduino",
+    "description": "A user-land stream wrapper implementation for PHP to Arduino communication via USB serial.",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "machinateur",
+            "email": "hello@machinateur.dev"
+        }
+    ],
+    "minimum-stability": "stable",
+    "require": {
+        "php": ">= 8.1"
+    },
+    "autoload": {
+        "files": [
+            "./arduino_lib.php"
+        ]
+    }
+}
