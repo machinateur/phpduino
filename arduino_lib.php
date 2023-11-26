@@ -172,6 +172,7 @@ abstract class streamWrapperAbstract implements streamWrapperInterface
 
     /**
      * @return resource
+     * @throws \Exception
      */
     public static function register(array $defaults)
     {
@@ -184,8 +185,10 @@ abstract class streamWrapperAbstract implements streamWrapperInterface
             \stream_wrapper_unregister(static::PROTOCOL_NAME);
         }
 
-        \stream_wrapper_register(static::PROTOCOL_NAME, static::class)
-        or die(\sprintf('Failed to register %s protocol', static::PROTOCOL_NAME));
+        $registered = \stream_wrapper_register(static::PROTOCOL_NAME, static::class);
+        if (!$registered) {
+            throw new \Exception(\sprintf('Failed to register %s protocol', static::PROTOCOL_NAME));
+        }
 
         return \stream_context_set_default([
             static::PROTOCOL_NAME => $defaults,
