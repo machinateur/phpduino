@@ -38,6 +38,29 @@ $deviceDataSize = 8;
 // -> Default is `SERIAL_8N1`, so 1 is the stop bit size.
 $deviceStopSize = 1;
 
+/**
+ * These are the option's required on Mac for the communication to succeed.
+ * - `ignbrk`   = ignore break characters
+ * - `-brkint`  = breaks [don't] cause an interrupt signal
+ * - `-icrnl`   = [don't] translate carriage return to newline
+ * - `-imaxbel` = [don't] beep and [...] flush a full input buffer on a character
+ * - `-opost`   = [don't] postprocess output
+ * - `-onlcr`   = [don't] translate newline to carriage return-newline
+ * - `-isig`    = [don't] enable interrupt, quit, and suspend special characters
+ * - `-icanon`  = [don't] enable special characters: erase, kill, werase, rprnt
+ * - `-iexten`  = [don't] enable non-POSIX special characters
+ * - `-echo`    = [don't] echo input characters
+ * - `-echoe`   = [don't] echo erase characters as backspace-space-backspace
+ * - `-echok`   = [don't] echo a newline after a kill character
+ * - `-echoctl` = [don't] echo control characters in hat notation ('^c')
+ * - `-echoke`  = kill all line by obeying the echoctl and echok settings
+ * - `noflsh`   = disable flushing after interrupt and quit special characters
+ */
+$deviceCustomCommand = 'Darwin' === \PHP_OS_FAMILY ? \implode(' ', [
+    'ignbrk', '-brkint', '-icrnl', '-imaxbel', '-opost', '-onlcr', '-isig', '-icanon', '-iexten', '-echo', '-echoe',
+    '-echok', '-echoctl', '-echoke', 'noflsh',
+]) : null;
+
 // The stream context configuration.
 $context = \stream_context_create([
     streamWrapper::PROTOCOL_NAME => [
@@ -45,9 +68,7 @@ $context = \stream_context_create([
         'parity'         => $deviceParity,
         'data_size'      => $deviceDataSize,
         'stop_size'      => $deviceStopSize,
-        'custom_command' => 'Darwin' === \PHP_OS_FAMILY
-            ? 'ignbrk -brkint -icrnl -imaxbel -opost -onlcr -isig -icanon -iexten -echo -echoe -echok -echoctl -echoke noflsh'
-            : null,
+        'custom_command' => $deviceCustomCommand,
     ],
 ]);
 
