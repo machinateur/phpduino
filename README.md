@@ -17,10 +17,11 @@ The [Arduino IDE](https://www.arduino.cc/en/software) is still required to uploa
 ## Usage
 
 ```php
-// First register the protocol and stream wrapper...
-streamWrapper::register();
-// Then use the protocol in a stream function...
+// First register the protocol and stream wrapper, ...
+\Machinateur\Arduino\streamWrapper::register();
+// ... then use the protocol in a stream function...
 $fd = \fopen('arduino://', 'r+b');
+// ... and finally do things with the $fd (fread/fwrite ops).
 ```
 
 ## Installation
@@ -51,6 +52,28 @@ Here are some links to relevant documentation, articles and forum threads:
 ## Example
 
 You can find an easy example that works with the following code in `./echo` on Mac:
+
+### Arduino sketch
+
+```c
+byte incomingByte = 0;
+
+void setup()
+{
+    Serial.begin(9600, SERIAL_8N1);
+}
+
+void loop()
+{
+  if (Serial.available() > 0) {
+    incomingByte = Serial.read();
+
+    Serial.print((char)incomingByte);
+  }
+}
+```
+
+### PHP script
 
 ```php
 // Example program for "echo.ino" communication to/from Arduino via USB serial.
@@ -147,6 +170,8 @@ while (!\feof($fd))
 echo \PHP_EOL,
     \PHP_EOL;
 ```
+
+Open a terminal and run the example, like `php ./echo.php`.
 
 ## License
 
