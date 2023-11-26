@@ -501,7 +501,7 @@ if ('Windows' === \PHP_OS_FAMILY) {
  */
 function byte_pack(array $bytes): string|false
 {
-    return \pack("C*", ...\array_values($bytes));
+    return [] === $bytes ? '' : \pack('C*', ...\array_values($bytes));
 }
 
 /**

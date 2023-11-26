@@ -6,7 +6,7 @@ A user-land stream wrapper implementation for PHP to Arduino communication via U
 
 This package defines an `arduino://` protocol handler using
  a [`streamWrapper`](https://www.php.net/manual/en/class.streamwrapper.php) implementation.
-It also provides some byte processing utility functions.
+It also provides some byte processing utility functions (`bate_pack()` and `byte_unpack()`).
 
 ## Requirements
 
