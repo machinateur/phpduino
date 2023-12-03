@@ -8,6 +8,9 @@ This package defines an `arduino://` protocol handler using
  a [`streamWrapper`](https://www.php.net/manual/en/class.streamwrapper.php) implementation.
 It also provides some byte processing utility functions (`byte_pack()` and `byte_unpack()`).
 
+Please note that this library is still in development, consider it unstable until version `1.0`.
+ Until then, pretty much anything may change without notice, even with patch releases.
+
 ## Requirements
 
 This package requires at least PHP 8.1 to work. No dependencies.
