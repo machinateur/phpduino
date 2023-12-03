@@ -45,10 +45,10 @@ abstract class streamWrapperAbstract implements streamWrapperInterface
         $options = \stream_context_get_options($use_resource ? $this->resource : $this->context);
 
         if (null !== $option) {
-            return $options[$option] ?? null;
+            return $options[static::PROTOCOL_NAME][$option] ?? null;
         }
 
-        return $options;
+        return $options[static::PROTOCOL_NAME] ?? [];
     }
 
     protected function _get_device(string $path): string
@@ -63,11 +63,17 @@ abstract class streamWrapperAbstract implements streamWrapperInterface
         return $path;
     }
 
-    protected function _configure_device(string $device): void
+    /**
+     * @return resource|false
+     */
+    protected function _configure_device(
+        string $device,
+        string $mode = 'r+b',
+    )/*: resource*/
     {
-        $this->device = $device;
+        // Call any configuration methods here, before or after the $device resource is opened.
 
-        // Call any configuration methods here, using $this->device, before the $device resource is opened.
+        return \fopen($device, $mode);
     }
 
     protected function _init(
@@ -86,12 +92,10 @@ abstract class streamWrapperAbstract implements streamWrapperInterface
             return false;
         }
 
-        $this->_configure_device($device);
-
-        $this->resource = \fopen($device, $mode);
+        $resource = $this->_configure_device($device, $mode);
 
         // The `$device` is now open for read/write access in binary. If not, i.e. it's `false`,
-        if (false === $this->resource) {
+        if (false === $resource) {
             if (!$this->suppressErrors) {
                 \trigger_error(\sprintf('Unable to fopen() device "%s".', $device), \E_ERROR);
             }
@@ -99,27 +103,8 @@ abstract class streamWrapperAbstract implements streamWrapperInterface
             return false;
         }
 
-        // Make sure the target device is a tty.
-        if (!\stream_isatty($this->resource)) {
-            \fclose($this->resource);
-
-            if (!$this->suppressErrors) {
-                \trigger_error(\sprintf('Unable to fopen() device "%s". No TTY detected.', $device), \E_ERROR);
-            }
-
-            return false;
-        }
-
-        // Set the device handle to non-blocking IO.
-        if (!\socket_set_blocking($this->resource, false)) {
-            \fclose($this->resource);
-
-            if (!$this->suppressErrors) {
-                \trigger_error(\sprintf('Unable to fopen() device "%s" in non-blocking mode.', $device), \E_ERROR);
-            }
-
-            return false;
-        }
+        $this->resource = $resource;
+        $this->device   = $device;
 
         return true;
     }
@@ -187,7 +172,7 @@ abstract class streamWrapperAbstract implements streamWrapperInterface
 
         $registered = \stream_wrapper_register(static::PROTOCOL_NAME, static::class);
         if (!$registered) {
-            throw new \Exception(\sprintf('Failed to register %s protocol', static::PROTOCOL_NAME));
+            throw new \UnexpectedValueException(\sprintf('Failed to register %s protocol', static::PROTOCOL_NAME));
         }
 
         return \stream_context_set_default([
@@ -217,8 +202,20 @@ if ('Windows' === \PHP_OS_FAMILY) {
             return $device;
         }
 
-        protected function _configure_baud_rate(): void
+        /**
+         * @return \Generator<string>
+         */
+        protected function _get_command(): \Generator
         {
+            // Set the custom command. If so, no further command parts are yielded.
+            $command = $this->_stream_context_options(static::CONTEXT_OPTION_COMMAND);
+            if (null !== $command) {
+                yield from (array)$command;
+
+                return;
+            }
+
+            // Set the device baud rate, matching the one from Arduino.
             $baudRate = (int)$this->_stream_context_options(static::CONTEXT_OPTION_BAUD_RATE);
             // Windows baud mapping, looks a bit weird.
             $baudRate = match ($baudRate) {
@@ -242,102 +239,97 @@ if ('Windows' === \PHP_OS_FAMILY) {
                     \trigger_error(\sprintf('Unable to fopen() device "%s": Invalid baud rate option "%d".',
                         $this->device, $baudRate), \E_ERROR);
                 }
-
-                return;
+            } else {
+                yield "baud={$baudRate}";
             }
 
-            // Set the device baud rate, matching the one from Arduino.
-            \shell_exec("mode {$this->device} baud={$baudRate}");
-        }
-
-        protected function _configure_parity(): void
-        {
-            $parity = (int)$this->_stream_context_options(static::CONTEXT_OPTION_PARITY);
-
             // Set the device parity.
+            $parity = (int)$this->_stream_context_options(static::CONTEXT_OPTION_PARITY);
             switch ($parity) {
                 case -1: // NONE
-                    \shell_exec("mode {$this->device} parity=n");
-
-                    return;
+                    yield 'parity=n';
+                    break;
                 case  0: // EVEN
-                    \shell_exec("mode {$this->device} parity=e");
-
-                    return;
+                    yield 'parity=e';
+                    break;
                 case  1: // ODD
-                    \shell_exec("mode {$this->device} parity=o");
-
-                    return;
+                    yield 'parity=o';
+                    break;
                 default:
-                    if ($this->suppressErrors) {
-                        return;
+                    if (!$this->suppressErrors) {
+                        \trigger_error(\sprintf('Unable to fopen() device "%s": Invalid parity option "%s".',
+                            $this->device, $parity), \E_ERROR);
                     }
             }
 
-            \trigger_error(\sprintf('Unable to fopen() device "%s": Invalid parity option "%d".', $this->device,
-                $parity), \E_ERROR);
-        }
-
-        protected function _configure_data_size(): void
-        {
-            $size = (int)$this->_stream_context_options(static::CONTEXT_OPTION_DATA_SIZE);
-
             // Set the device data size.
-            $size = \min(8, \max(5, $size));
+            $dataSize = (int)$this->_stream_context_options(static::CONTEXT_OPTION_DATA_SIZE);
+            $dataSize = \min(8, \max(5, $dataSize));
 
-            \shell_exec("mode {$this->device} data={$size}");
-        }
-
-        protected function _configure_stop_size(): void
-        {
-            $size = (int)$this->_stream_context_options(static::CONTEXT_OPTION_STOP_SIZE);
+            yield "data={$dataSize}";
 
             // Set the device stop bit size.
-            $size = \min(2, \max(1, $size));
+            $stopSize = (int)$this->_stream_context_options(static::CONTEXT_OPTION_STOP_SIZE);
+            $stopSize = \min(2, \max(1, $stopSize));
 
-            \shell_exec("mode {$this->device} stop={$size}");
-        }
+            yield "stop={$stopSize}";
 
-        protected function _configure_command(): void
-        {
-            $command = $this->_stream_context_options(static::CONTEXT_OPTION_COMMAND);
-
-            if (null === $command) {
-                return;
-            }
-
-            $command = \escapeshellcmd($command);
-
-            \shell_exec("mode {$this->device} {$command}");
+            // Set the device flow control to "none", setting it is not supported by this implementation.
+            yield 'xon=off';
+            yield 'octs=off';
+            yield 'rts=on';
         }
 
         /**
          * For `mode` information
          *  see docs at https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/mode.
+         *
+         * @return resource|false
          */
-        protected function _configure_device(string $device): void
+        protected function _configure_device(
+            string $device,
+            string $mode = 'r+b',
+        )/*: resource*/
         {
-            parent::_configure_device($device);
+            $command = "mode {$device}";
+            foreach ($this->_get_command() as $part) {
+                $part = \escapeshellarg($part);
+                $command .= " {$part}";
+            }
 
-            $this->_configure_baud_rate();
-            $this->_configure_parity();
-            $this->_configure_data_size();
-            $this->_configure_stop_size();
+            // On windows, configure the port...
+            \shell_exec($command);
+            // ... before opening the stream. This is when the device becomes unavailable for configuration changes.
+            $resource = parent::_configure_device($device, $mode);
 
-            // Set the device flow control to "none", setting it is not supported by this implementation.
-            \shell_exec("mode {$device} xon=off octs=off rts=on");
+            // TODO: Check if this works on windows.
+            \stream_set_read_buffer($resource, 0);
+            \stream_set_write_buffer($resource, 0);
 
-            $this->_configure_command();
+            return $resource;
+        }
+
+        protected function _init(string $path, string $mode = 'r+b',): bool
+        {
+            if (!parent::_init($path, $mode)) {
+                return false;
+            }
+
+            // On windows, do no validation on the return value, which seems rather unpredictable.
+            \stream_set_blocking($this->resource, false);
+
+            return true;
         }
 
         /**
          * @return resource
+         * @throws \Exception
          */
         public static function register(array $defaults = [])
         {
             return parent::register(
                 \array_merge([
-                    static::CONTEXT_OPTION_BAUD_RATE => 9600,
+                    static::CONTEXT_OPTION_BAUD_RATE =>   96,
                     static::CONTEXT_OPTION_PARITY    =>   -1,
                     static::CONTEXT_OPTION_DATA_SIZE =>    8,
                     static::CONTEXT_OPTION_STOP_SIZE =>    1,
@@ -354,17 +346,28 @@ if ('Windows' === \PHP_OS_FAMILY) {
         protected const CONTEXT_OPTION_DATA_SIZE = 'data_size';
         protected const CONTEXT_OPTION_STOP_SIZE = 'stop_size';
         protected const CONTEXT_OPTION_COMMAND   = 'custom_command';
+        protected const CONTEXT_OPTION_USLEEP_S  = 'usleep_s';
 
         protected function _get_device(string $path): string
         {
             return \sprintf('/dev/%s', parent::_get_device($path));
         }
 
-        protected function _configure_baud_rate(): void
+        /**
+         * @return \Generator<string>
+         */
+        protected function _get_command(): \Generator
         {
-            $baudRate = (int)$this->_stream_context_options(static::CONTEXT_OPTION_BAUD_RATE);
+            // Set the custom command. If so, no further command parts are yielded.
+            $command = $this->_stream_context_options(static::CONTEXT_OPTION_COMMAND);
+            if (null !== $command) {
+                yield from (array)$command;
+
+                return;
+            }
 
             // Set the device baud rate, matching the one from Arduino.
+            $baudRate = (int)$this->_stream_context_options(static::CONTEXT_OPTION_BAUD_RATE);
             switch ($baudRate) {
                 case     300:
                 case     600:
@@ -379,110 +382,129 @@ if ('Windows' === \PHP_OS_FAMILY) {
                 case  38_400:
                 case  57_600:
                 case 115_200:
-                    $f = (\PHP_OS_FAMILY === 'Darwin') ? '-f' : '-F';
-                    \shell_exec("stty $f '{$this->device}' {$baudRate}");
-
-                    return;
+                    yield "{$baudRate}";
+                    break;
                 default:
-                    if ($this->suppressErrors) {
-                        return;
+                    if (!$this->suppressErrors) {
+                        \trigger_error(\sprintf('Unable to fopen() device "%s": Invalid baud rate option "%d".',
+                            $this->device, $baudRate), \E_ERROR);
                     }
             }
 
-            \trigger_error(\sprintf('Unable to fopen() device "%s": Invalid baud rate option "%d".', $this->device,
-                $baudRate), \E_ERROR);
-        }
-
-        protected function _configure_parity(): void
-        {
-            $parity = (int)$this->_stream_context_options(static::CONTEXT_OPTION_PARITY);
-
-            $f = (\PHP_OS_FAMILY === 'Darwin') ? '-f' : '-F';
             // Set the device parity.
+            $parity = (int)$this->_stream_context_options(static::CONTEXT_OPTION_PARITY);
             switch ($parity) {
                 case -1: // NONE
-                    \shell_exec("stty $f '{$this->device}' -parenb");
-
-                    return;
+                    yield '-parenb';
+                    break;
                 case  0: // EVEN
-                    \shell_exec("stty $f '{$this->device}'  parenb -parodd");
-
-                    return;
+                    yield 'parenb';
+                    yield '-parodd';
+                    break;
                 case  1: // ODD
-                    \shell_exec("stty $f '{$this->device}'  parenb  parodd");
-
-                    return;
+                    yield 'parenb';
+                    yield 'parodd';
+                    break;
                 default:
-                    if ($this->suppressErrors) {
-                        return;
+                    if (!$this->suppressErrors) {
+                        \trigger_error(\sprintf('Unable to fopen() device "%s": Invalid parity option "%d".',
+                            $this->device, $parity), \E_ERROR);
                     }
             }
 
-            \trigger_error(\sprintf('Unable to fopen() device "%s": Invalid parity option "%d".', $this->device,
-                $parity), \E_ERROR);
-        }
-
-        protected function _configure_data_size(): void
-        {
-            $size = (int)$this->_stream_context_options(static::CONTEXT_OPTION_DATA_SIZE);
-
             // Set the device data size.
-            $size = \min(8, \max(5, $size));
+            $dataSize = (int)$this->_stream_context_options(static::CONTEXT_OPTION_DATA_SIZE);
+            $dataSize = \min(8, \max(5, $dataSize));
 
-            $f = (\PHP_OS_FAMILY === 'Darwin') ? '-f' : '-F';
-            \shell_exec("stty $f '{$this->device}' cs{$size}");
-        }
-
-        protected function _configure_stop_size(): void
-        {
-            $size = (int)$this->_stream_context_options(static::CONTEXT_OPTION_STOP_SIZE);
+            yield "cs{$dataSize}";
 
             // Set the device stop bit size.
+            $size = (int)$this->_stream_context_options(static::CONTEXT_OPTION_STOP_SIZE);
             $size = \min(2, \max(1, $size));
 
-            $f = (\PHP_OS_FAMILY === 'Darwin') ? '-f' : '-F';
             if (1 < $size) {
-                \shell_exec("stty $f '{$this->device}'  cstopb");
+                yield 'cstopb';
             } else {
-                \shell_exec("stty $f '{$this->device}' -cstopb");
-            }
-        }
-
-        protected function _configure_command(): void
-        {
-            $command = $this->_stream_context_options(static::CONTEXT_OPTION_COMMAND);
-
-            if (null === $command) {
-                return;
+                yield '-cstopb';
             }
 
-            $command = \escapeshellcmd($command);
-
-            $f = (\PHP_OS_FAMILY === 'Darwin') ? '-f' : '-F';
-            \shell_exec("stty $f '{$this->device}' {$command}");
+            // Set the device flow control to "none", setting it is not supported by this implementation.
+            yield 'clocal';
+            yield '-crtscts';
+            yield '-ixon';
+            yield '-ixoff';
         }
 
         /**
          * For `stty` information, see man pages at https://man7.org/linux/man-pages/man1/stty.1.html.
+         *
+         * @return resource|false
          */
-        protected function _configure_device(string $device): void
+        protected function _configure_device(
+            string $device,
+            string $mode = 'r+b',
+        )/*: resource*/
         {
-            parent::_configure_device($device);
-
-            $this->_configure_baud_rate();
-            $this->_configure_parity();
-            $this->_configure_data_size();
-            $this->_configure_stop_size();
-
             $f = (\PHP_OS_FAMILY === 'Darwin') ? '-f' : '-F';
-            // Set the device flow control to "none", setting it is not supported by this implementation.
-            \shell_exec("stty $f '{$device}' clocal -crtscts -ixon -ixoff");
 
-            $this->_configure_command();
+            $command = "stty $f '{$device}'";
+            foreach ($this->_get_command() as $part) {
+                $part = \escapeshellarg($part);
+                $command .= " {$part}";
+            }
+
+            // This is the sleep time in seconds, applied as multiplier to usleep() with 1mil as base.
+            $sleepTime = (float)$this->_stream_context_options(static::CONTEXT_OPTION_USLEEP_S);
+            $sleepTime = (float)\max(1.0, (float)\abs($sleepTime));
+
+            // On linux, open the stream first, ...
+            $resource = parent::_configure_device($device);
+            \stream_set_read_buffer($resource, 0);
+            \stream_set_write_buffer($resource, 0);
+            // ... wait a carefully measured amount of time...
+            \usleep((int)($sleepTime * 1_000_000));
+            // ... and then configure it. This is because on UNIX systems, ports may reset when unused.
+            \shell_exec($command);
+            // This way, we prevent the configuration from resetting unless our handle is released first.
+            return $resource;
+        }
+
+        protected function _init(string $path, string $mode = 'r+b',): bool
+        {
+            if (!parent::_init($path, $mode)) {
+                return false;
+            }
+
+            // Make sure the target device is a tty.
+            if (!\stream_isatty($this->resource)) {
+                \fclose($this->resource);
+
+                if (!$this->suppressErrors) {
+                    \trigger_error(\sprintf('Unable to fopen() device "%s". No TTY detected.',
+                        $this->device), \E_ERROR);
+                }
+
+                return false;
+            }
+
+            // Set the device handle to non-blocking IO.
+            if (!\stream_set_blocking($this->resource, false)) {
+                \fclose($this->resource);
+
+                if (!$this->suppressErrors) {
+                    \trigger_error(\sprintf('Unable to fopen() device "%s" in non-blocking mode.',
+                        $this->device), \E_ERROR);
+                }
+
+                return false;
+            }
+
+            return true;
         }
 
         /**
          * @return resource
+         * @throws \Exception
          */
         public static function register(array $defaults = [])
         {
@@ -493,6 +515,7 @@ if ('Windows' === \PHP_OS_FAMILY) {
                     static::CONTEXT_OPTION_DATA_SIZE =>    8,
                     static::CONTEXT_OPTION_STOP_SIZE =>    1,
                     static::CONTEXT_OPTION_COMMAND   => null,
+                    static::CONTEXT_OPTION_USLEEP_S  =>    1.618119,
                 ],  $defaults)
             );
         }

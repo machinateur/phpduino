@@ -1,92 +1,6 @@
-# phpduino
+<?php
 
-A user-land stream wrapper implementation for PHP to Arduino communication via USB serial.
-
-## Concept
-
-This package defines an `arduino://` protocol handler using
- a [`streamWrapper`](https://www.php.net/manual/en/class.streamwrapper.php) implementation.
-It also provides some byte processing utility functions (`byte_pack()` and `byte_unpack()`).
-
-## Requirements
-
-This package requires at least PHP 8.1 to work. No dependencies.
-
-The [Arduino IDE](https://www.arduino.cc/en/software) is still required to upload sketches to the connected device.
-
-## Usage
-
-```php
-// First register the protocol and stream wrapper, ...
-\Machinateur\Arduino\streamWrapper::register();
-// ... then use the protocol in a stream function...
-$fd = \fopen('arduino://', 'r+b');
-// ... and finally do things with the $fd (fread/fwrite ops).
-```
-
-## Installation
-
-```
-composer require machinateur/phpduino
-```
-
-## Docs
-
-Here are some links to relevant documentation, articles and forum threads:
-
-- https://docs.arduino.cc/learn/built-in-libraries/software-serial#begin
-- https://www.arduino.cc/reference/en/language/functions/communication/serial/begin/
-- https://unix.stackexchange.com/a/138390
-- https://stackoverflow.com/a/8632603
-- https://playground.arduino.cc/Interfacing/LinuxTTY/
-- https://forum.arduino.cc/t/linux-serial-io/38934/2
-- https://web.archive.org/web/20110228183102/https://anealkhimani.com/2010/02/08/web-enabled-pantilt-webcam-with-arduino-and-php-part-1/
-- https://web.archive.org/web/20110217155443/http://anealkhimani.com/2010/02/20/web-enabled-pantilt-web-came-with-arduino-and-php-part-2/
-- https://web.archive.org/web/20110217070336/http://anealkhimani.com/2010/02/21/web-enabled-pantilt-camera-with-arduino-and-php-part-3/
-- https://github.com/Xowap/PHP-Serial/blob/develop/src/PhpSerial.php
-- https://man7.org/linux/man-pages/man1/stty.1.html
-- https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/mode
-- https://unix.stackexchange.com/questions/242778/what-is-the-easiest-way-to-configure-serial-port-on-linux
-- https://www.php.net/manual/en/class.streamwrapper.php
-- https://stackoverflow.com/a/9616217
-- https://stackoverflow.com/a/59549518
-- https://stackoverflow.com/questions/32569611/linux-stty-command-lag-help-needed-on-serial-usb
-- https://forum.arduino.cc/t/arduino-auto-resets-after-opening-serial-monitor/850915
-- https://forum.arduino.cc/t/using-php-to-control-the-arduino-over-usb-serial-connection/134478/9
-- https://raspberrypi.stackexchange.com/questions/36490/stty-command-lag-and-queue-issue
-- https://raspberrypi.stackexchange.com/questions/9695/disable-dtr-on-ttyusb0
-- https://stackoverflow.com/a/957416
-
-## Example
-
-You can find an easy example that works with the below code in `./example/echo` on Mac.
-
-There is also another more complex example included, involving binary data transmission,
- which can be found in `./example/echo/echo-binary.php`.
-
-### Arduino sketch
-
-```c
-byte incomingByte = 0;
-
-void setup()
-{
-    Serial.begin(9600, SERIAL_8N1);
-}
-
-void loop()
-{
-  if (Serial.available() > 0) {
-    incomingByte = Serial.read();
-
-    Serial.print((char)incomingByte);
-  }
-}
-```
-
-### PHP script
-
-```php
+declare(strict_types=1);
 
 // Example program for "echo.ino" communication to/from Arduino via USB serial.
 
@@ -127,6 +41,7 @@ $deviceStopSize = 1;
 
 /**
  * These are the option's required on Mac for the communication to succeed.
+ * ... TODO: Add missing.
  * - `ignbrk`   = ignore break characters
  * - `-brkint`  = breaks [don't] cause an interrupt signal
  * - `-icrnl`   = [don't] translate carriage return to newline
@@ -181,10 +96,3 @@ do {
 echo $output,
     \PHP_EOL,
     \PHP_EOL;
-```
-
-Open a terminal and run the example, like `php ./echo.php`.
-
-## License
-
-It's MIT.

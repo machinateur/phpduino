@@ -2,11 +2,10 @@
 
 declare(strict_types=1);
 
-// Example program for "echo.ino" communication to/from Arduino via USB serial.
-
 use Machinateur\Arduino\streamWrapper;
+use Machinateur\Arduino;
 
-require_once '../vendor/autoload.php';
+require_once __DIR__ . '/../../vendor/autoload.php';
 
 // Register the protocol and stream wrapper.
 streamWrapper::register();
@@ -15,6 +14,7 @@ streamWrapper::register();
 //  Prefer `cu` if on Mac, use `ls /dev/tty.*` to find the available devices.
 $deviceName     = 'tty.usbmodem2101';
 $deviceName     =  'cu.usbmodem2101';
+//$deviceName     = 'COM7';
 
 // The device's baud rate.
 //  See Arduino docs at https://docs.arduino.cc/learn/built-in-libraries/software-serial#begin for conventinal rates.
@@ -40,6 +40,7 @@ $deviceStopSize = 1;
 
 /**
  * These are the option's required on Mac for the communication to succeed.
+ * ... TODO: Add missing.
  * - `ignbrk`   = ignore break characters
  * - `-brkint`  = breaks [don't] cause an interrupt signal
  * - `-icrnl`   = [don't] translate carriage return to newline
@@ -56,10 +57,15 @@ $deviceStopSize = 1;
  * - `-echoke`  = kill all line by obeying the echoctl and echok settings
  * - `noflsh`   = disable flushing after interrupt and quit special characters
  */
-$deviceCustomCommand = 'Darwin' === \PHP_OS_FAMILY ? \implode(' ', [
+$deviceCustomCommand = 'Darwin' === \PHP_OS_FAMILY ? [
+    '9600', '-parenb', '-cstopb', 'clocal', '-crtscts', '-ixon', '-ixoff',
+    '-hup', // Try to stop the reset on fclose(), see https://stackoverflow.com/a/59549518.
+    // Ideally only run with the `-hup` option if not yet set, so there will be no more restarts due to RTS HANGUP.
     'ignbrk', '-brkint', '-icrnl', '-imaxbel', '-opost', '-onlcr', '-isig', '-icanon', '-iexten', '-echo', '-echoe',
     '-echok', '-echoctl', '-echoke', 'noflsh',
-]) : null;
+] : [
+    // TODO: Add windows command. Move to concrete implementation when finalized.
+];
 
 // The stream context configuration.
 $context = \stream_context_create([
@@ -69,6 +75,7 @@ $context = \stream_context_create([
         'data_size'      => $deviceDataSize,
         'stop_size'      => $deviceStopSize,
         'custom_command' => $deviceCustomCommand,
+        'usleep_s'       => 2, // A safe threshold for the arduino to boot on fopen().
     ],
 ]);
 
@@ -76,27 +83,23 @@ $context = \stream_context_create([
 //  and the `echo.ino` program is running.
 $fd = \fopen("arduino://{$deviceName}", 'r+b', false, $context);
 
-\stream_set_blocking(\STDIN, true);
-echo 'echo: type and get a response...',
-    \PHP_EOL,
+/** @var array<int> $struct */
+$struct = \array_map(\ord(...), \str_split($input = 'binary transmission of an ascii string message'));
+
+echo \fwrite($fd, $input = Arduino\byte_pack($struct), \count($struct)),
     \PHP_EOL;
 
-$waiting = false;
-$input   = false;
-$output  = '';
+echo 'Input:        ',
+    \print_r(\array_map(\dechex(...), $struct), true);
+echo 'Input:        ',
+    \print_r($input, true),
+    \PHP_EOL;
+echo 'Input HEX:    ',
+    \print_r(\bin2hex(Arduino\byte_pack($struct)), true),
+    \PHP_EOL;
 
-\fread($fd, 1);
-
-while (!\feof($fd))
-{
-    if (!$waiting) {
-        $input = \fgets(\STDIN);
-
-        if ($input) {
-            $waiting = false !== \fwrite($fd, $input);
-        }
-    }
-
+$output = '';
+while (!\feof($fd)) {
     \usleep(5_000);
 
     $output .= \fread($fd, 1);
@@ -107,14 +110,19 @@ while (!\feof($fd))
         continue;
     }
 
-    if ($output === $input) {
-        echo $output;
+    echo $output,
+        \PHP_EOL;
 
-        $waiting = false;
-        $input   = false;
-        $output  = '';
+    if ($output === $input) {
+        break;
     }
 }
 
-echo \PHP_EOL,
+\fclose($fd);
+
+echo 'Output:       ',
+    \print_r($output, true),
+    \PHP_EOL;
+echo 'Output HEX:   ',
+    \print_r(\array_map(\dechex(...), Arduino\byte_unpack($output)), true),
     \PHP_EOL;
