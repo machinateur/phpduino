@@ -40,7 +40,7 @@ $deviceStopSize = 1;
 
 /**
  * These are the option's required on Mac for the communication to succeed.
- * ... TODO: Add missing.
+ * ... TODO: Add missing. Also document the Windows options!
  * - `ignbrk`   = ignore break characters
  * - `-brkint`  = breaks [don't] cause an interrupt signal
  * - `-icrnl`   = [don't] translate carriage return to newline
@@ -64,7 +64,8 @@ $deviceCustomCommand = 'Darwin' === \PHP_OS_FAMILY ? [
     'ignbrk', '-brkint', '-icrnl', '-imaxbel', '-opost', '-onlcr', '-isig', '-icanon', '-iexten', '-echo', '-echoe',
     '-echok', '-echoctl', '-echoke', 'noflsh',
 ] : [
-    // TODO: Add windows command. Move to concrete implementation when finalized.
+    'baud=96', 'parity=n', 'data=8', 'stop=1', // Standard options, with some more:
+    'to=on', 'xon=off', 'odsr=off', 'octs=off', 'dtr=on', 'rts=on', 'idsr=off',
 ];
 
 // The stream context configuration.
@@ -97,6 +98,8 @@ echo 'Input:        ',
 echo 'Input HEX:    ',
     \print_r(\bin2hex(Arduino\byte_pack($struct)), true),
     \PHP_EOL;
+
+\stream_set_chunk_size($fd, 1);
 
 $output = '';
 while (!\feof($fd)) {

@@ -145,6 +145,21 @@ abstract class streamWrapperAbstract implements streamWrapperInterface
         return \fflush($this->resource);
     }
 
+    public function stream_seek(int $offset, int $whence = \SEEK_SET): bool
+    {
+        return 0 === \fseek($this->resource, $offset, $whence);
+    }
+
+    public function stream_tell(): int
+    {
+        return \ftell($this->resource);
+    }
+
+    public function stream_truncate(int $newSize): bool
+    {
+        return \ftruncate($this->resource, $newSize);
+    }
+
     public function stream_close(): void
     {
         \fclose($this->resource);
@@ -153,6 +168,22 @@ abstract class streamWrapperAbstract implements streamWrapperInterface
     public function stream_metadata(string $path, int $option, mixed $value): bool
     {
         return false;
+    }
+
+    public function stream_set_option(int $option, int $arg1, int $arg2 = 0): bool
+    {
+        return match ($option) {
+            \STREAM_OPTION_BLOCKING     => \stream_set_blocking($this->resource, (bool)$arg1),
+            \STREAM_OPTION_READ_TIMEOUT => \stream_set_timeout($this->resource, $arg1, $arg2),
+            \STREAM_OPTION_READ_BUFFER  => \stream_set_read_buffer($this->resource, $arg2),
+            \STREAM_OPTION_WRITE_BUFFER => \stream_set_write_buffer($this->resource, $arg2),
+            default                     => false,
+        };
+    }
+
+    public function stream_stat(): array|false
+    {
+        return \fstat($this->resource);
     }
 
     /**
@@ -189,13 +220,14 @@ if ('Windows' === \PHP_OS_FAMILY) {
         protected const CONTEXT_OPTION_DATA_SIZE = 'data_size';
         protected const CONTEXT_OPTION_STOP_SIZE = 'stop_size';
         protected const CONTEXT_OPTION_COMMAND   = 'custom_command';
+        protected const CONTEXT_OPTION_USLEEP_S  = 'usleep_s';
 
         protected function _get_device(string $path): string
         {
             $device = parent::_get_device($path);
 
-            if (1 === \preg_match("/^(?:com|COM)?(\d+)$/", $path, $matches)) {
-                return \sprintf('com%d:', (int)$matches[1]);
+            if (1 === \preg_match("/^(?:com|COM)?(\d+)$/", $device, $matches)) {
+                return \sprintf('com%d', (int)$matches[1]);
             }
 
             // Just pass, if we cannot format it, probably a non-standard name.
@@ -293,23 +325,31 @@ if ('Windows' === \PHP_OS_FAMILY) {
         {
             $command = "mode {$device}";
             foreach ($this->_get_command() as $part) {
-                $part = \escapeshellarg($part);
                 $command .= " {$part}";
             }
+
+            // This is the sleep time in seconds, applied as multiplier to usleep() with 1mil as base.
+            $sleepTime = (float)$this->_stream_context_options(static::CONTEXT_OPTION_USLEEP_S);
+            $sleepTime = (float)\max(1.0, (float)\abs($sleepTime));
 
             // On windows, configure the port...
             \shell_exec($command);
             // ... before opening the stream. This is when the device becomes unavailable for configuration changes.
             $resource = parent::_configure_device($device, $mode);
-
-            // TODO: Check if this works on windows.
+            // ... wait a carefully measured amount of time...
+            \usleep((int)($sleepTime * 1_000_000));
+            // Doing some housekeeping, these will have no visible effect on windows.
+            \stream_set_timeout($resource, 0);
             \stream_set_read_buffer($resource, 0);
             \stream_set_write_buffer($resource, 0);
 
             return $resource;
         }
 
-        protected function _init(string $path, string $mode = 'r+b',): bool
+        protected function _init(
+            string $path,
+            string $mode = 'r+b',
+        ): bool
         {
             if (!parent::_init($path, $mode)) {
                 return false;
@@ -334,6 +374,7 @@ if ('Windows' === \PHP_OS_FAMILY) {
                     static::CONTEXT_OPTION_DATA_SIZE =>    8,
                     static::CONTEXT_OPTION_STOP_SIZE =>    1,
                     static::CONTEXT_OPTION_COMMAND   => null,
+                    static::CONTEXT_OPTION_USLEEP_S  =>    2,
                 ],  $defaults)
             );
         }
@@ -449,7 +490,6 @@ if ('Windows' === \PHP_OS_FAMILY) {
 
             $command = "stty $f '{$device}'";
             foreach ($this->_get_command() as $part) {
-                $part = \escapeshellarg($part);
                 $command .= " {$part}";
             }
 
@@ -469,7 +509,10 @@ if ('Windows' === \PHP_OS_FAMILY) {
             return $resource;
         }
 
-        protected function _init(string $path, string $mode = 'r+b',): bool
+        protected function _init(
+            string $path,
+            string $mode = 'r+b',
+        ): bool
         {
             if (!parent::_init($path, $mode)) {
                 return false;

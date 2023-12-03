@@ -87,7 +87,6 @@ void loop()
 ### PHP script
 
 ```php
-
 // Example program for "echo.ino" communication to/from Arduino via USB serial.
 
 use Machinateur\Arduino\streamWrapper;
@@ -127,6 +126,7 @@ $deviceStopSize = 1;
 
 /**
  * These are the option's required on Mac for the communication to succeed.
+ * ... TODO: Add missing. Also document the Windows options!
  * - `ignbrk`   = ignore break characters
  * - `-brkint`  = breaks [don't] cause an interrupt signal
  * - `-icrnl`   = [don't] translate carriage return to newline
@@ -150,7 +150,8 @@ $deviceCustomCommand = 'Darwin' === \PHP_OS_FAMILY ? [
     'ignbrk', '-brkint', '-icrnl', '-imaxbel', '-opost', '-onlcr', '-isig', '-icanon', '-iexten', '-echo', '-echoe',
     '-echok', '-echoctl', '-echoke', 'noflsh',
 ] : [
-    'baud=96', 'parity=n', 'data=8', 'stop=1', 'octs=off', 'rts=on', 'odsr=on', 'idsr=off',
+    'baud=96', 'parity=n', 'data=8', 'stop=1', // Standard options, with some more:
+    'to=on', 'xon=off', 'odsr=off', 'octs=off', 'dtr=on', 'rts=on', 'idsr=off',
 ];
 
 // The stream context configuration.
@@ -172,10 +173,19 @@ $fd = \fopen("arduino://{$deviceName}", 'r+b', false, $context);
 $input  = 'hello world';
 $output = '';
 
+// As it turns out, this is the key, as for serial (com) ports on windows represented as file stream:
+//  If the stream is read buffered, and it does not represent a plain file, at most one read of up to a number of bytes
+//  equal to the chunk size (usually 8192) is made; depending on the previously buffered data, the size of the returned
+//  data may be larger than the chunk size.
+// This undocumented behaviour of the streamWrapper API may be observed when removing this call and monitoring the value
+//  of `$count` in `streamWrapperAbstract::stream_read()` when called during `fread($fd, 1)`. The `$count` will be 8192!
+\stream_set_chunk_size($fd, 1);
+
 \fwrite($fd, $input);
 
 do {
     $output .= \fread($fd, 1);
+    //echo $output.\PHP_EOL;
 } while ($output !== $input);
 
 echo $output,
