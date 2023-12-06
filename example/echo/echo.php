@@ -1,5 +1,29 @@
 <?php
 
+/**
+ * MIT License
+ *
+ * Copyright (c) 2021-2023 machinateur
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 declare(strict_types=1);
 
 // Example program for "echo.ino" communication to/from Arduino via USB serial.
@@ -11,63 +35,88 @@ require_once __DIR__ . '/../../vendor/autoload.php';
 // Register the protocol and stream wrapper.
 streamWrapper::register();
 
-// The device's name in `/dev/`.
-//  Prefer `cu` if on Mac, use `ls /dev/tty.*` to find the available devices.
-$deviceName     = 'tty.usbmodem2101';
-$deviceName     =  'cu.usbmodem2101';
-//$deviceName     = 'COM7';
+/**
+ * The device's name in `/dev/`.
+ *  Prefer `cu` if on Mac, use `ls /dev/tty.*` to find the available devices.
+ *
+ * On windows, use the device manager to identify the correct serial (com) port, under the `COM` device group.
+ */
+if ('Darwin' === \PHP_OS_FAMILY) {
+    $deviceName = 'tty.usbmodem2101';
+    $deviceName = 'cu.usbmodem2101';
+} elseif ('Windows' === \PHP_OS_FAMILY) {
+    $deviceName = 'COM7';
+} else {
+    $deviceName = '';
 
-// The device's baud rate.
-//  See Arduino docs at https://docs.arduino.cc/learn/built-in-libraries/software-serial#begin for conventinal rates.
-// -> Supported baud rates are 300, 600, 1200, 2400, 4800, 9600, 14400, 19200, 28800, 31250, 38400, 57600, and 115200 bauds.
+    \trigger_error(
+        \sprintf('No device name specified in "%s" on line "%d"!', __FILE__, __LINE__ - 3), \E_USER_ERROR);
+}
+
+/**
+ * The device's baud rate.
+ *
+ * See Arduino docs at https://docs.arduino.cc/learn/built-in-libraries/software-serial#begin for conventional rates.
+ *
+ * Supported baud rates are:
+ *  - ` 300`
+ *  - ` 600`
+ *  - ` 1200`
+ *  - ` 2400`
+ *  - ` 4800`
+ *  - ` 9600`
+ *  - ` 14400`
+ *  - ` 19200`
+ *  - ` 28800`
+ *  - ` 31250`
+ *  - ` 38400`
+ *  - ` 57600`
+ *  - `115200`
+ */
 $deviceBaudRate = 9600;
 
-// The device's parity bit configuration.
-//  See Arduino docs at https://www.arduino.cc/reference/en/language/functions/communication/serial/begin/.
-// -> none = -1
-// ->  odd =  1
-// -> even =  0
+/**
+ * The device's parity bit configuration.
+ *
+ * See Arduino docs at https://www.arduino.cc/reference/en/language/functions/communication/serial/begin/.
+ * - `none` = `-1`
+ * - ` odd` = ` 1`
+ * - `even` = ` 0`
+ *
+ * Default is `SERIAL_8N1`, so `N` is the data size.
+ */
 $deviceParity   = -1;
 
-// The device's data size configuration.
-//  See Arduino docs at https://www.arduino.cc/reference/en/language/functions/communication/serial/begin/.
-// -> Default is `SERIAL_8N1`, so 8 is the data size.
+/**
+ * The device's data size configuration.
+ *
+ * See Arduino docs at https://www.arduino.cc/reference/en/language/functions/communication/serial/begin/.
+ *
+ * Default is `SERIAL_8N1`, so `8` is the data size.
+ */
 $deviceDataSize = 8;
 
-// The device's stop bit size configuration.
-//  See Adruino docs at https://www.arduino.cc/reference/en/language/functions/communication/serial/begin/.
-// -> Default is `SERIAL_8N1`, so 1 is the stop bit size.
+/**
+ * The device's stop bit size configuration.
+ *
+ * See Arduino docs at https://www.arduino.cc/reference/en/language/functions/communication/serial/begin/.
+ *
+ * Default is `SERIAL_8N1`, so `1` is the stop bit size.
+ */
 $deviceStopSize = 1;
 
 /**
- * These are the option's required on Mac for the communication to succeed.
- * ... TODO: Add missing. Also document the Windows options!
- * - `ignbrk`   = ignore break characters
- * - `-brkint`  = breaks [don't] cause an interrupt signal
- * - `-icrnl`   = [don't] translate carriage return to newline
- * - `-imaxbel` = [don't] beep and [...] flush a full input buffer on a character
- * - `-opost`   = [don't] postprocess output
- * - `-onlcr`   = [don't] translate newline to carriage return-newline
- * - `-isig`    = [don't] enable interrupt, quit, and suspend special characters
- * - `-icanon`  = [don't] enable special characters: erase, kill, werase, rprnt
- * - `-iexten`  = [don't] enable non-POSIX special characters
- * - `-echo`    = [don't] echo input characters
- * - `-echoe`   = [don't] echo erase characters as backspace-space-backspace
- * - `-echok`   = [don't] echo a newline after a kill character
- * - `-echoctl` = [don't] echo control characters in hat notation ('^c')
- * - `-echoke`  = kill all line by obeying the echoctl and echok settings
- * - `noflsh`   = disable flushing after interrupt and quit special characters
+ * The device custom command. If set, will be yielded in favor of default commands.
+ *
+ * Try to stop the reset on `fclose()`, see https://stackoverflow.com/a/59549518.
+ * - `[-]hup` = send a hangup signal when the last process closes the tty
+ *
+ * Ideally only run with the `-hup` option if not yet set, so there will be no more restarts due to RTS HANGUP.
+ *  Only use if desired.
  */
 $deviceCustomCommand = 'Darwin' === \PHP_OS_FAMILY ? [
-    '9600', '-parenb', '-cstopb', 'clocal', '-crtscts', '-ixon', '-ixoff',
-    '-hup', // Try to stop the reset on fclose(), see https://stackoverflow.com/a/59549518.
-    // Ideally only run with the `-hup` option if not yet set, so there will be no more restarts due to RTS HANGUP.
-    'ignbrk', '-brkint', '-icrnl', '-imaxbel', '-opost', '-onlcr', '-isig', '-icanon', '-iexten', '-echo', '-echoe',
-    '-echok', '-echoctl', '-echoke', 'noflsh',
-] : [
-    'baud=96', 'parity=n', 'data=8', 'stop=1', // Standard options, with some more:
-    'to=on', 'xon=off', 'odsr=off', 'octs=off', 'dtr=on', 'rts=on', 'idsr=off',
-];
+    //'-hup'
+] : null;
 
 // The stream context configuration.
 $context = \stream_context_create([
@@ -76,14 +125,15 @@ $context = \stream_context_create([
         'parity'         => $deviceParity,
         'data_size'      => $deviceDataSize,
         'stop_size'      => $deviceStopSize,
-        'custom_command' => $deviceCustomCommand,
-        'usleep_s'       => 2, // A safe threshold for the arduino to boot on fopen().
+        'custom_command' => null,
+        // A safe threshold for the arduino to boot on `fopen()`.
+        'usleep_s'       => 2,
     ],
 ]);
 
 // Open the connection. Make sure the device is connected under the configured device name
 //  and the `echo.ino` program is running.
-$fd = \fopen("arduino://{$deviceName}", 'r+b', false, $context);
+$fd = \fopen("arduino://{$deviceName}", 'r+b', false);
 
 $input  = 'hello world';
 $output = '';
@@ -99,7 +149,7 @@ $output = '';
 \fwrite($fd, $input);
 
 do {
-    $output .= \fread($fd, 1);
+    $output .= \fgetc($fd);
     //echo $output.\PHP_EOL;
 } while ($output !== $input);
 

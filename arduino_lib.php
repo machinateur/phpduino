@@ -1,5 +1,29 @@
 <?php
 
+/**
+ * MIT License
+ *
+ * Copyright (c) 2021-2023 machinateur
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 declare(strict_types=1);
 
 namespace Machinateur\Arduino;
@@ -123,6 +147,14 @@ abstract class streamWrapperAbstract implements streamWrapperInterface
         }
 
         return $this->_init($path, $mode);
+    }
+
+    /**
+     * @return resource
+     */
+    public function stream_cast(int $cast_as)
+    {
+        return $this->resource;
     }
 
     public function stream_read(int $count): string|false
@@ -306,16 +338,67 @@ if ('Windows' === \PHP_OS_FAMILY) {
 
             yield "stop={$stopSize}";
 
-            // Set the device flow control to "none", setting it is not supported by this implementation.
-            yield 'xon=off';
-            yield 'octs=off';
-            yield 'rts=on';
+            // Set the necessary defaults too.
+            /**
+             * These are the option's required on Unix for the communication to succeed:
+             * - `to={on | off}`            = Specifies whether the device uses infinite time out processing.
+             *                                The default value is `off`. Turning this option `on` means that the device
+             *                                will never stop waiting to receive a response
+             *                                from a host or client computer.
+             * - `xon={on | off}`           = Specifies whether the system allows the XON/XOFF protocol.
+             *                                This protocol provides flow control for serial communications, enhancing
+             *                                reliability, but reducing performance.
+             * - `odsr={on | off}`          = Specifies whether the system turns `on` the Data Set Ready (DSR)
+             *                                output handshake.
+             * - `octs={on | off}`          = Specifies whether the system turns `on` the Clear to Send (CTS)
+             *                                output handshake.
+             * - `dtr={on | off | hs}`      = Specifies whether the system turns on the Data Terminal Ready (DTR)
+             *                                output handshake. Setting this value to `on` mode,
+             *                                provides a constant signal to show the terminal is ready to send data.
+             *                                Setting this value to `hs` mode provides a handshake signal
+             *                                between the two terminals.
+             * - `rts={on | off | hs | tg}` = Specifies whether the system turns `on` the Request to Send (RTS)
+             *                                output handshake. Setting this value to `on` mode,
+             *                                provides a constant signal to show the terminal is ready to send data.
+             *                                Setting this value to `hs` mode provides a handshake signal
+             *                                between the two terminals. Setting this value to `tg` mode provides a way
+             *                                to toggle between ready and not ready states.
+             * - `idsr={on | off}`          = Specifies whether the system turns `on` the DSR sensitivity.
+             *                                You must turn this option `on` to use DSR handshaking.
+             * The other options (yielded above) are these:
+             *  - `baud=<b>`                 = Specifies the transmission rate in bits per second.
+             *                                 The valid values include:
+             *    - 11 - 110 baud
+             *    - 15 - 150 baud
+             *    - 30 - 300 baud
+             *    - 60 - 600 baud
+             *    - 12 - 1200 baud
+             *    - 24 - 2400 baud
+             *    - 48 - 4800 baud
+             *    - 96 - 9600 baud
+             *    - 19 - 19,200 baud
+             *  - `parity=<p>`               = Specifies how the system uses the parity bit
+             *                                 to check for transmission errors. The valid values include:
+             *    - `n` - none
+             *    - `e` - even (default value)
+             *    - `o` - odd
+             *    - `m` - mark
+             *    - `s` - space
+             *  - `data=<d>`                 = Specifies the number of data bits in a character.
+             *                                 Valid values range from `5` through `8`. The default value is `7`.
+             *                                 Not all devices support the values `5` and `6`.
+             *  - `stop=<s>`                 = Specifies the number of stop bits that define the end of a character:
+             *                                 `1`, `1.5`, or `2`. If the baud rate is `110`, the default value is `2`.
+             *                                 Otherwise, the default value is `1`.
+             *                                 Not all devices support the value `1.5`.
+             *
+             * For `mode` information see docs
+             *  at https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/mode.
+             */
+            yield from ['to=on', 'xon=off', 'odsr=off', 'octs=off', 'dtr=on', 'rts=on', 'idsr=off'];
         }
 
         /**
-         * For `mode` information
-         *  see docs at https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/mode.
-         *
          * @return resource|false
          */
         protected function _configure_device(
@@ -323,6 +406,23 @@ if ('Windows' === \PHP_OS_FAMILY) {
             string $mode = 'r+b',
         )/*: resource*/
         {
+            /**
+             * Syntax:
+             * ```
+             * mode com<m>[:]
+             *  [baud=<b>] [parity=<p>]
+             *  [data=<d>] [stop=<s>]
+             *  [to={on|off}] [xon={on|off}]
+             *  [odsr={on|off}] [octs={on|off}]
+             *  [dtr={on|off|hs}] [rts={on|off|hs|tg}]
+             *  [idsr={on|off}]
+             * ```
+             *
+             * See {@see _get_command()} for the options yielded by the generator.
+             *
+             * For `mode` information see docs
+             *  at https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/mode.
+             */
             $command = "mode {$device}";
             foreach ($this->_get_command() as $part) {
                 $command .= " {$part}";
@@ -423,6 +523,9 @@ if ('Windows' === \PHP_OS_FAMILY) {
                 case  38_400:
                 case  57_600:
                 case 115_200:
+                    /**
+                     * `N` = set the input and output speeds to N bauds
+                     */
                     yield "{$baudRate}";
                     break;
                 default:
@@ -436,13 +539,24 @@ if ('Windows' === \PHP_OS_FAMILY) {
             $parity = (int)$this->_stream_context_options(static::CONTEXT_OPTION_PARITY);
             switch ($parity) {
                 case -1: // NONE
+                    /**
+                     * `[-]parenb` = [don't] generate parity bit in output and expect parity bit in input
+                     */
                     yield '-parenb';
                     break;
                 case  0: // EVEN
+                    /**
+                     * - `[-]parenb` = [don't] generate parity bit in output and expect parity bit in input
+                     * - `[-]parodd` = set odd parity (or even parity with '-')
+                     */
                     yield 'parenb';
                     yield '-parodd';
                     break;
-                case  1: // ODD
+                case  1: //  ODD
+                    /**
+                     * - `[-]parenb` = [don't] generate parity bit in output and expect parity bit in input
+                     * - `[-]parodd` = set odd parity (or even parity with '-')
+                     */
                     yield 'parenb';
                     yield 'parodd';
                     break;
@@ -457,28 +571,60 @@ if ('Windows' === \PHP_OS_FAMILY) {
             $dataSize = (int)$this->_stream_context_options(static::CONTEXT_OPTION_DATA_SIZE);
             $dataSize = \min(8, \max(5, $dataSize));
 
+            /**
+             * `csN = set character size to N bits, N in [5..8]
+             */
             yield "cs{$dataSize}";
 
             // Set the device stop bit size.
             $size = (int)$this->_stream_context_options(static::CONTEXT_OPTION_STOP_SIZE);
             $size = \min(2, \max(1, $size));
 
+            /**
+             * `[-]cstopb` = use two stop bits per character (one with '-')
+             */
             if (1 < $size) {
                 yield 'cstopb';
             } else {
                 yield '-cstopb';
             }
 
-            // Set the device flow control to "none", setting it is not supported by this implementation.
-            yield 'clocal';
-            yield '-crtscts';
-            yield '-ixon';
-            yield '-ixoff';
+            // Set the necessary defaults too.
+            /**
+             * These are the option's required on Unix for the communication to succeed:
+             * - `clocal`   = disable modem control signals
+             * - `-crtscts` = [don't] enable RTS/CTS handshaking
+             * - `-ixon`    = [don't] enable XON/XOFF flow control
+             * - `-ixoff`   = [don't] enable sending of start/stop characters
+             * - `ignbrk`   = ignore break characters
+             * - `-brkint`  = breaks [don't] cause an interrupt signal
+             * - `-icrnl`   = [don't] translate carriage return to newline
+             * - `-imaxbel` = [don't] beep and [...] flush a full input buffer on a character
+             * - `-opost`   = [don't] postprocess output
+             * - `-onlcr`   = [don't] translate newline to carriage return-newline
+             * - `-isig`    = [don't] enable interrupt, quit, and suspend special characters
+             * - `-icanon`  = [don't] enable special characters: erase, kill, werase, rprnt
+             * - `-iexten`  = [don't] enable non-POSIX special characters
+             * - `-echo`    = [don't] echo input characters
+             * - `-echoe`   = [don't] echo erase characters as backspace-space-backspace
+             * - `-echok`   = [don't] echo a newline after a kill character
+             * - `-echoctl` = [don't] echo control characters in hat notation ('^c')
+             * - `-echoke`  = kill all line by obeying the echoctl and echok settings
+             * - `noflsh`   = disable flushing after interrupt and quit special characters
+             * The other options (yielded above) are these:
+             *  - `N` = set the input and output speeds to N bauds
+             *  - `[-]parenb` = [don't] generate parity bit in output and expect parity bit in input
+             *  - `[-]parodd` = set odd parity (or even parity with '-')
+             *  - `csN`       = set character size to N bits, N in [5..8]
+             *  - `[-]cstopb` = use two stop bits per character (one with '-')
+             *
+             * For `stty` information, see man pages at https://man7.org/linux/man-pages/man1/stty.1.html.
+             */
+            yield from ['clocal', '-crtscts', '-ixon', '-ixoff', 'ignbrk', '-brkint', '-icrnl', '-imaxbel', '-opost',
+                '-onlcr', '-isig', '-icanon', '-iexten', '-echo', '-echoe', '-echok', '-echoctl', '-echoke', 'noflsh'];
         }
 
         /**
-         * For `stty` information, see man pages at https://man7.org/linux/man-pages/man1/stty.1.html.
-         *
          * @return resource|false
          */
         protected function _configure_device(
@@ -488,6 +634,16 @@ if ('Windows' === \PHP_OS_FAMILY) {
         {
             $f = (\PHP_OS_FAMILY === 'Darwin') ? '-f' : '-F';
 
+            /**
+             * Synopsis:
+             * ```
+             *  stty [-F DEVICE | --file=DEVICE] [SETTING]...
+             * ```
+             *
+             * See {@see _get_command()} for the options yielded by the generator.
+             *
+             * For `stty` information, see man pages at https://man7.org/linux/man-pages/man1/stty.1.html.
+             */
             $command = "stty $f '{$device}'";
             foreach ($this->_get_command() as $part) {
                 $command .= " {$part}";
@@ -499,6 +655,7 @@ if ('Windows' === \PHP_OS_FAMILY) {
 
             // On linux, open the stream first, ...
             $resource = parent::_configure_device($device);
+            \stream_set_timeout($resource, 0);
             \stream_set_read_buffer($resource, 0);
             \stream_set_write_buffer($resource, 0);
             // ... wait a carefully measured amount of time...
@@ -558,7 +715,7 @@ if ('Windows' === \PHP_OS_FAMILY) {
                     static::CONTEXT_OPTION_DATA_SIZE =>    8,
                     static::CONTEXT_OPTION_STOP_SIZE =>    1,
                     static::CONTEXT_OPTION_COMMAND   => null,
-                    static::CONTEXT_OPTION_USLEEP_S  =>    1.618119,
+                    static::CONTEXT_OPTION_USLEEP_S  =>    2,
                 ],  $defaults)
             );
         }
