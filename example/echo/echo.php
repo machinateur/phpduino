@@ -114,9 +114,7 @@ $deviceStopSize = 1;
  * Ideally only run with the `-hup` option if not yet set, so there will be no more restarts due to RTS HANGUP.
  *  Only use if desired.
  */
-$deviceCustomCommand = 'Darwin' === \PHP_OS_FAMILY ? [
-    //'-hup'
-] : null;
+$deviceCustomCommand = null;
 
 // The stream context configuration.
 $context = \stream_context_create([
@@ -133,7 +131,7 @@ $context = \stream_context_create([
 
 // Open the connection. Make sure the device is connected under the configured device name
 //  and the `echo.ino` program is running.
-$fd = \fopen("arduino://{$deviceName}", 'r+b', false);
+$fd = \fopen("arduino://{$deviceName}", 'r+b', false, $context);
 
 $input  = 'hello world';
 $output = '';
@@ -149,10 +147,18 @@ $output = '';
 \fwrite($fd, $input);
 
 do {
-    $output .= \fgetc($fd);
+    $char = \fgetc($fd);
+
+    // See https://www.man7.org/linux/man-pages/man7/ascii.7.html.
+    if (false === $char || 128 <= \ord($char)) {
+        continue;
+    }
+
+    $output .= $char;
     //echo $output.\PHP_EOL;
 } while ($output !== $input);
 
-echo $output,
+echo \PHP_EOL,
+    $output,
     \PHP_EOL,
     \PHP_EOL;
