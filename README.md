@@ -175,8 +175,16 @@ composer require machinateur/phpduino
 
 That is, the time to sleep before opening the device handle in seconds. The option in the stream context is `usleep_s`.
 
+For windows, this timeout is applied before the device is opened internally by the stream wrapper, but after it was
+ configured, while on Mac / linux the timeout occurs after the device has been opened internally, but before it was
+ configured using the command.
+
 In my tests, I could go as low as `1.618119`, but below that the success rate started to drop randomly. The cable and
  port used could also play a role here.
+
+The timeout is required, as on linux the handle has to be occupied, to avoid a premature reset of the configuration.
+And likewise, on windows, the configuration can only be applied before the handle is occupied, hence the device
+ is busy after that.
 
 ### Stream chunk size
 

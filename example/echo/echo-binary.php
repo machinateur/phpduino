@@ -26,6 +26,11 @@
 
 declare(strict_types=1);
 
+// Example program for "echo.ino" communication to/from Arduino via USB serial, in binary.
+// I should mention, since PHP and Arduino share the same "understanding" of a single `char` (8 bit, ASCII), this is
+//  similar to using a string directly with `\fwrite()` or `\fread()` (or `\fgetc()`). It gets interesting, when data
+//  is transmitted at bit-level, using `\pack()` and `\unpack()` directly.
+
 use Machinateur\Arduino\streamWrapper;
 use Machinateur\Arduino;
 
