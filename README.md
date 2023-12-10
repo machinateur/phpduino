@@ -222,7 +222,7 @@ You can find an easy example that works with the below code in `./example/echo` 
 There is also another more complex example included, involving binary data transmission,
  which can be found in `./example/echo/echo-binary.php`.
 
-Yet another example, found in `./example/echo-nonblocking`, demonstrates the usage of `\stream_seclet()` to avoid
+Yet another example, found in `./example/echo-nonblocking`, demonstrates the usage of `\stream_select()` to avoid
  blocking read/write calls to the connected device.
 
 ### Arduino sketch
